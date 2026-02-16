@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Models
+*.pth
+*.pt
+
+# Dataset
+archive/
+dataset/
+BraTS2024/
+
+# YOLO runs
+runs/
+
+# Conda
+env/
+*.conda
+
+# VS Code
+.vscode/
