@@ -195,6 +195,11 @@
   cursor: pointer;
 }
 
+.secondary-action.active-toggle {
+  border-color: rgba(207, 89, 38, 0.35);
+  background: rgba(207, 89, 38, 0.12);
+}
+
 .secondary-action:disabled,
 .speed-pill:disabled {
   opacity: 0.5;
@@ -346,6 +351,25 @@
   font-size: 0.85rem;
 }
 
+.status-chip.idle {
+  background: rgba(90, 96, 104, 0.12);
+}
+
+.status-chip.analyzing {
+  background: rgba(248, 182, 87, 0.2);
+  color: #8a4b0f;
+}
+
+.status-chip.ready {
+  background: rgba(40, 120, 82, 0.16);
+  color: #1f6a47;
+}
+
+.status-chip.error {
+  background: rgba(154, 45, 29, 0.14);
+  color: #9a2d1d;
+}
+
 .cine-stage {
   position: relative;
   min-height: 320px;
@@ -367,8 +391,21 @@
   animation: sliceFade 180ms ease;
 }
 
+.cine-heatmap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  mix-blend-mode: lighten;
+  filter: saturate(1.35) contrast(1.12);
+}
+
 .cine-overlay {
   position: absolute;
+  z-index: 2;
   inset: auto 16px 16px 16px;
   display: flex;
   justify-content: space-between;
@@ -385,6 +422,33 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.heatmap-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.opacity-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--heading-color);
+}
+
+.opacity-group input {
+  width: 180px;
+  accent-color: #cf5926;
+}
+
+.heatmap-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .slider-wrap {
