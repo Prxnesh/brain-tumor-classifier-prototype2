@@ -1,25 +1,30 @@
 :root {
-  --bg: #f2ede4;
-  --bg-deep: #ece2d3;
-  --panel: rgba(255, 252, 247, 0.72);
-  --tile: rgba(255, 248, 238, 0.82);
-  --border: rgba(72, 58, 41, 0.14);
-  --border-soft: rgba(72, 58, 41, 0.1);
-  --heading-color: #1f252d;
-  --text: #3f4954;
-  --muted: #6f6c66;
-  --muted-strong: #555962;
-  --success: #287852;
-  --warning: #9d6328;
-  --shadow: 0 24px 60px rgba(41, 34, 25, 0.12);
-  --font-sans: 'Segoe UI', 'Trebuchet MS', 'Gill Sans', sans-serif;
+  --bg: #07111a;
+  --bg-deep: #030912;
+  --panel: rgba(10, 19, 30, 0.82);
+  --panel-strong: rgba(14, 24, 36, 0.94);
+  --tile: rgba(18, 31, 46, 0.82);
+  --tile-soft: rgba(16, 27, 41, 0.74);
+  --border: rgba(125, 177, 214, 0.18);
+  --border-soft: rgba(125, 177, 214, 0.1);
+  --heading-color: #f4f8fc;
+  --text: #cad5e2;
+  --muted: #8ea4bb;
+  --muted-strong: #aab9ca;
+  --success: #67d8a1;
+  --warning: #f4b46a;
+  --danger: #ff7f8c;
+  --glow: rgba(52, 134, 199, 0.22);
+  --shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  --font-sans: 'Trebuchet MS', 'Segoe UI', 'Gill Sans', sans-serif;
 
   font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   color: var(--text);
   background:
-    radial-gradient(circle at top, rgba(255, 206, 139, 0.28), transparent 28%),
+    radial-gradient(circle at top, rgba(47, 122, 194, 0.28), transparent 24%),
+    radial-gradient(circle at 80% 20%, rgba(22, 191, 156, 0.16), transparent 18%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -35,6 +40,10 @@ html,
 body,
 #root {
   min-height: 100%;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
@@ -63,8 +72,8 @@ h4 {
 }
 
 h1 {
-  font-size: clamp(2.6rem, 6vw, 4.8rem);
-  letter-spacing: -0.05em;
+  font-size: clamp(2.8rem, 6vw, 5rem);
+  letter-spacing: -0.06em;
 }
 
 h2 {
@@ -74,4 +83,9 @@ h2 {
 button,
 input {
   font: inherit;
+}
+
+::selection {
+  background: rgba(79, 158, 222, 0.3);
+  color: #fff;
 }

@@ -54,6 +54,25 @@ function App() {
   const [cineHeatmapOpacity, setCineHeatmapOpacity] = useState(72)
   const [mriSliceResults, setMriSliceResults] = useState<Record<number, PredictionResponse>>({})
   const [mriSliceStatus, setMriSliceStatus] = useState<Record<number, SliceStatus>>({})
+  const [isPreparingPresentation, setIsPreparingPresentation] = useState(false)
+  const [autoPlayWhenReady, setAutoPlayWhenReady] = useState(false)
+  const [displayedSliceUrl, setDisplayedSliceUrl] = useState<string | null>(null)
+  const [incomingSliceUrl, setIncomingSliceUrl] = useState<string | null>(null)
+  const [displayedHeatmapUrl, setDisplayedHeatmapUrl] = useState<string | null>(null)
+  const [incomingHeatmapUrl, setIncomingHeatmapUrl] = useState<string | null>(null)
+  const availableNow = new Set(config?.available_now ?? [])
+  const activeMriSliceUrl = mriSliceUrls[activeSliceIndex] ?? null
+  const activeSliceResult = mriSliceResults[activeSliceIndex] ?? null
+  const activeSliceStatus = mriSliceStatus[activeSliceIndex] ?? 'idle'
+  const viewerHeatmap = activeSliceResult?.gradcam_overlay ?? result?.gradcam_overlay ?? null
+  const readySliceCount = mriSlices.filter((_, index) => mriSliceStatus[index] === 'ready').length
+  const sliceProgressLabel = useMemo(() => {
+    if (!mriSlices.length) {
+      return 'No MRI stack loaded'
+    }
+
+    return `Slice ${activeSliceIndex + 1} of ${mriSlices.length}`
+  }, [activeSliceIndex, mriSlices.length])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -90,6 +109,56 @@ function App() {
   }, [mriSliceUrls])
 
   useEffect(() => {
+    if (!activeMriSliceUrl) {
+      setDisplayedSliceUrl(null)
+      setIncomingSliceUrl(null)
+      return
+    }
+
+    if (!displayedSliceUrl) {
+      setDisplayedSliceUrl(activeMriSliceUrl)
+      return
+    }
+
+    if (displayedSliceUrl === activeMriSliceUrl) {
+      return
+    }
+
+    setIncomingSliceUrl(activeMriSliceUrl)
+    const timeout = window.setTimeout(() => {
+      setDisplayedSliceUrl(activeMriSliceUrl)
+      setIncomingSliceUrl(null)
+    }, 240)
+
+    return () => window.clearTimeout(timeout)
+  }, [activeMriSliceUrl, displayedSliceUrl])
+
+  useEffect(() => {
+    if (!viewerHeatmap) {
+      setDisplayedHeatmapUrl(null)
+      setIncomingHeatmapUrl(null)
+      return
+    }
+
+    if (!displayedHeatmapUrl) {
+      setDisplayedHeatmapUrl(viewerHeatmap)
+      return
+    }
+
+    if (displayedHeatmapUrl === viewerHeatmap) {
+      return
+    }
+
+    setIncomingHeatmapUrl(viewerHeatmap)
+    const timeout = window.setTimeout(() => {
+      setDisplayedHeatmapUrl(viewerHeatmap)
+      setIncomingHeatmapUrl(null)
+    }, 240)
+
+    return () => window.clearTimeout(timeout)
+  }, [displayedHeatmapUrl, viewerHeatmap])
+
+  useEffect(() => {
     if (!isSlicePlaying || mriSliceUrls.length <= 1) {
       return
     }
@@ -107,6 +176,7 @@ function App() {
     setError(null)
     setMriSliceResults({})
     setMriSliceStatus({})
+    setAutoPlayWhenReady(false)
 
     if (kind === 'mri') {
       setMriFile(nextFile)
@@ -128,18 +198,29 @@ function App() {
       )
 
     mriSliceUrls.forEach((url) => URL.revokeObjectURL(url))
+    const nextSliceUrls = files.map((file) => URL.createObjectURL(file))
     setResult(null)
     setMriSliceResults({})
     setMriSliceStatus({})
     setMriSlices(files)
-    setMriSliceUrls(files.map((file) => URL.createObjectURL(file)))
+    setMriSliceUrls(nextSliceUrls)
     setActiveSliceIndex(0)
-    setIsSlicePlaying(files.length > 1)
+    setIsSlicePlaying(false)
+    setAutoPlayWhenReady(files.length > 1)
+    setDisplayedSliceUrl(nextSliceUrls[0] ?? null)
+    setIncomingSliceUrl(null)
+    setDisplayedHeatmapUrl(null)
+    setIncomingHeatmapUrl(null)
   }
 
-  async function performAnalysis(options?: { silent?: boolean; preferActiveSlice?: boolean }) {
+  async function performAnalysis(options?: {
+    silent?: boolean
+    preferActiveSlice?: boolean
+    targetSliceIndex?: number
+  }) {
     const silent = options?.silent ?? false
     const preferActiveSlice = options?.preferActiveSlice ?? false
+    const targetSliceIndexOption = options?.targetSliceIndex ?? null
 
     if (!silent) {
       setError(null)
@@ -149,8 +230,9 @@ function App() {
     const formData = new FormData()
     let endpoint = ''
 
-    const activeMriSliceFile = mriSlices[activeSliceIndex] ?? mriSlices[0] ?? null
-    const targetSliceIndex = activeMriSliceFile ? activeSliceIndex : null
+    const preferredSliceIndex = targetSliceIndexOption ?? activeSliceIndex
+    const activeMriSliceFile = mriSlices[preferredSliceIndex] ?? mriSlices[0] ?? null
+    const targetSliceIndex = activeMriSliceFile ? preferredSliceIndex : null
 
     if (modality === 'mri') {
       const analysisFile = preferActiveSlice ? activeMriSliceFile ?? mriFile : mriFile ?? activeMriSliceFile
@@ -220,7 +302,9 @@ function App() {
 
       startTransition(() => {
         const prediction = payload as PredictionResponse
-        setResult(prediction)
+        if (!silent || targetSliceIndex === activeSliceIndex || targetSliceIndex === null) {
+          setResult(prediction)
+        }
         if (targetSliceIndex !== null && (modality === 'mri' || modality === 'fusion')) {
           setMriSliceResults((current) => ({
             ...current,
@@ -251,12 +335,8 @@ function App() {
     }
   }
 
-  const runSliceAutoAnalysis = useEffectEvent(() => {
-    void performAnalysis({ silent: true, preferActiveSlice: true })
-  })
-
-  useEffect(() => {
-    if (isSlicePlaying || !mriSlices.length || modality === 'ct') {
+  const preparePresentationStack = useEffectEvent(() => {
+    if (isPreparingPresentation || !mriSlices.length || modality === 'ct') {
       return
     }
 
@@ -264,30 +344,65 @@ function App() {
       return
     }
 
+    void (async () => {
+      setIsPreparingPresentation(true)
+      setIsSlicePlaying(false)
+
+      const orderedIndexes = [
+        activeSliceIndex,
+        ...Array.from({ length: mriSlices.length }, (_, index) => index).filter(
+          (index) => index !== activeSliceIndex
+        ),
+      ]
+
+      for (const index of orderedIndexes) {
+        if (mriSliceStatus[index] === 'ready') {
+          continue
+        }
+
+        await performAnalysis({
+          silent: true,
+          preferActiveSlice: true,
+          targetSliceIndex: index,
+        })
+      }
+
+      setIsPreparingPresentation(false)
+    })()
+  })
+
+  useEffect(() => {
+    if (!mriSlices.length || modality === 'ct') {
+      return
+    }
+
+    if (modality === 'fusion' && !ctFile) {
+      return
+    }
+
+    const allReady =
+      mriSlices.length > 0 &&
+      mriSlices.every((_, index) => mriSliceStatus[index] === 'ready')
+
+    if (allReady) {
+      if (autoPlayWhenReady && mriSlices.length > 1) {
+        setIsSlicePlaying(true)
+        setAutoPlayWhenReady(false)
+      }
+      return
+    }
+
     const timeout = window.setTimeout(() => {
-      runSliceAutoAnalysis()
-    }, 320)
+      preparePresentationStack()
+    }, 280)
 
     return () => window.clearTimeout(timeout)
-  }, [activeSliceIndex, config, ctFile, isSlicePlaying, modality, mriSlices.length])
+  }, [activeSliceIndex, autoPlayWhenReady, ctFile, modality, mriSliceStatus, mriSlices])
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     await performAnalysis({ silent: false, preferActiveSlice: true })
   }
-
-  const availableNow = new Set(config?.available_now ?? [])
-  const activeMriSliceUrl = mriSliceUrls[activeSliceIndex] ?? null
-  const activeSliceResult = mriSliceResults[activeSliceIndex] ?? null
-  const activeSliceStatus = mriSliceStatus[activeSliceIndex] ?? 'idle'
-  const viewerHeatmap = activeSliceResult?.gradcam_overlay ?? result?.gradcam_overlay ?? null
-  const sliceProgressLabel = useMemo(() => {
-    if (!mriSlices.length) {
-      return 'No MRI stack loaded'
-    }
-
-    return `Slice ${activeSliceIndex + 1} of ${mriSlices.length}`
-  }, [activeSliceIndex, mriSlices.length])
 
   return (
     <main className="app-shell">
@@ -440,6 +555,9 @@ function App() {
                 <div className="cine-chip-row">
                   <span className="cine-chip">{sliceProgressLabel}</span>
                   <span className="cine-chip">{playbackFps} fps</span>
+                  <span className="cine-chip">
+                    {readySliceCount}/{mriSlices.length || 0} layers ready
+                  </span>
                   <span className={`cine-chip status-chip ${activeSliceStatus}`}>
                     {activeSliceStatus === 'analyzing'
                       ? 'Analyzing slice...'
@@ -453,18 +571,33 @@ function App() {
               </div>
 
               <div className="cine-stage">
-                {activeMriSliceUrl ? (
+                {displayedSliceUrl ? (
                   <>
                     <img
-                      src={activeMriSliceUrl}
+                      src={displayedSliceUrl}
                       alt={`MRI slice ${activeSliceIndex + 1}`}
-                      className="cine-image"
+                      className="cine-image base"
                     />
-                    {viewerHeatmap && showCineHeatmap ? (
+                    {incomingSliceUrl ? (
                       <img
-                        src={viewerHeatmap}
+                        src={incomingSliceUrl}
+                        alt={`MRI slice ${activeSliceIndex + 1}`}
+                        className="cine-image incoming"
+                      />
+                    ) : null}
+                    {displayedHeatmapUrl && showCineHeatmap ? (
+                      <img
+                        src={displayedHeatmapUrl}
                         alt="MRI heatmap overlay"
-                        className="cine-heatmap"
+                        className="cine-heatmap base"
+                        style={{ opacity: cineHeatmapOpacity / 100 }}
+                      />
+                    ) : null}
+                    {incomingHeatmapUrl && showCineHeatmap ? (
+                      <img
+                        src={incomingHeatmapUrl}
+                        alt="MRI heatmap overlay"
+                        className="cine-heatmap incoming"
                         style={{ opacity: cineHeatmapOpacity / 100 }}
                       />
                     ) : null}
@@ -547,7 +680,7 @@ function App() {
                 </div>
                 {!viewerHeatmap ? (
                   <p className="heatmap-hint">
-                    Run MRI analysis first. If you only loaded a slice stack, the active slice will be analyzed.
+                    The app is preparing a full presentation stack. Playback starts automatically once all layers are ready.
                   </p>
                 ) : null}
               </div>
