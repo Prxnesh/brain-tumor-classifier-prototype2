@@ -29,3 +29,12 @@ env/
 
 # VS Code
 .vscode/
+dataset/
+datasets/
+data/
+**/dataset/
+**/datasets/
+**/data/
+*.nii
+*.nii.gz
+*.dcm
