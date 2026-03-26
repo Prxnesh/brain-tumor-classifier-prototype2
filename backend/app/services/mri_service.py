@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam import GradCAM, GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from timm import create_model
@@ -47,7 +47,10 @@ class MRIInferenceService:
         self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
-        self.cam = GradCAM(model=self.model, target_layers=[self.model.layer3[-1]])
+        # Multi-layer CAM captures both coarse context and sharper lesion boundaries.
+        self.target_layers = [self.model.layer3[-1], self.model.layer4[-1]]
+        self.cam = GradCAM(model=self.model, target_layers=self.target_layers)
+        self.cam_pp = GradCAMPlusPlus(model=self.model, target_layers=self.target_layers)
 
     def predict(self, image_bytes: bytes) -> PredictionResult:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -61,11 +64,7 @@ class MRIInferenceService:
         confidence = float(probs[pred_class])
         predicted_label = CLASS_NAMES[pred_class]
 
-        grayscale_cam = self.cam(
-            input_tensor=input_tensor,
-            targets=[ClassifierOutputTarget(pred_class)],
-        )[0]
-        grayscale_cam = cv2.GaussianBlur(grayscale_cam, (5, 5), 0)
+        grayscale_cam = self._build_robust_cam(input_tensor, pred_class)
 
         rgb_img = np.array(image.resize((224, 224)), dtype=np.float32) / 255.0
         overlay = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
@@ -82,9 +81,58 @@ class MRIInferenceService:
             report=self._build_report(predicted_label, confidence, probs),
             notes=[
                 "MRI inference is active in this build.",
+                "Heatmap is generated with Grad-CAM + Grad-CAM++ + test-time augmentation averaging.",
                 "CT-only and CT+MRI fusion flows are scaffolded and ready for datasets.",
             ],
         )
+
+    def _build_robust_cam(self, input_tensor: torch.Tensor, pred_class: int) -> np.ndarray:
+        targets = [ClassifierOutputTarget(pred_class)]
+        tta_inputs = self._generate_tta_inputs(input_tensor)
+        cam_maps: list[np.ndarray] = []
+
+        for variant in tta_inputs:
+            cam_basic = self.cam(input_tensor=variant, targets=targets)[0]
+            cam_pp = self.cam_pp(input_tensor=variant, targets=targets)[0]
+            fused = 0.45 * cam_basic + 0.55 * cam_pp
+            cam_maps.append(self._undo_tta_if_needed(fused, variant, input_tensor))
+
+        stacked = np.stack(cam_maps, axis=0)
+        cam = np.mean(stacked, axis=0)
+        cam = self._normalize_cam(cam)
+        cam = cv2.GaussianBlur(cam, (7, 7), 0)
+        cam = self._normalize_cam(cam)
+        return cam
+
+    def _generate_tta_inputs(self, input_tensor: torch.Tensor) -> list[torch.Tensor]:
+        # Use horizontal and vertical flips to stabilize saliency without changing image scale.
+        return [
+            input_tensor,
+            torch.flip(input_tensor, dims=[3]),
+            torch.flip(input_tensor, dims=[2]),
+        ]
+
+    def _undo_tta_if_needed(
+        self,
+        cam_map: np.ndarray,
+        variant_tensor: torch.Tensor,
+        original_tensor: torch.Tensor,
+    ) -> np.ndarray:
+        result = cam_map
+        if torch.equal(variant_tensor, torch.flip(original_tensor, dims=[3])):
+            result = np.flip(result, axis=1)
+        elif torch.equal(variant_tensor, torch.flip(original_tensor, dims=[2])):
+            result = np.flip(result, axis=0)
+        return np.ascontiguousarray(result)
+
+    @staticmethod
+    def _normalize_cam(cam_map: np.ndarray) -> np.ndarray:
+        cam = cam_map.astype(np.float32)
+        cam -= cam.min()
+        max_value = cam.max()
+        if max_value < 1e-8:
+            return np.zeros_like(cam, dtype=np.float32)
+        return cam / max_value
 
     def _build_report(self, label: str, confidence: float, probs: np.ndarray) -> list[dict[str, str]]:
         highest_other = sorted(
