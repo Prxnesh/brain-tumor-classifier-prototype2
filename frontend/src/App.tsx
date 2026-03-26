@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import './App.css'
 
@@ -43,6 +43,11 @@ function App() {
   const [result, setResult] = useState<PredictionResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mriSlices, setMriSlices] = useState<File[]>([])
+  const [mriSliceUrls, setMriSliceUrls] = useState<string[]>([])
+  const [activeSliceIndex, setActiveSliceIndex] = useState(0)
+  const [isSlicePlaying, setIsSlicePlaying] = useState(false)
+  const [playbackFps, setPlaybackFps] = useState(8)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -72,6 +77,24 @@ function App() {
     }
   }, [ctPreviewUrl, mriPreviewUrl])
 
+  useEffect(() => {
+    return () => {
+      mriSliceUrls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [mriSliceUrls])
+
+  useEffect(() => {
+    if (!isSlicePlaying || mriSliceUrls.length <= 1) {
+      return
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveSliceIndex((current) => (current + 1) % mriSliceUrls.length)
+    }, Math.max(1000 / playbackFps, 60))
+
+    return () => window.clearInterval(interval)
+  }, [isSlicePlaying, mriSliceUrls.length, playbackFps])
+
   function onFileChange(event: ChangeEvent<HTMLInputElement>, kind: 'mri' | 'ct') {
     const nextFile = event.target.files?.[0] ?? null
     setResult(null)
@@ -87,6 +110,20 @@ function App() {
     setCtFile(nextFile)
     if (ctPreviewUrl) URL.revokeObjectURL(ctPreviewUrl)
     setCtPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
+  }
+
+  function onMriSequenceChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+      .filter((file) => file.type.startsWith('image/'))
+      .sort((left, right) =>
+        left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
+      )
+
+    mriSliceUrls.forEach((url) => URL.revokeObjectURL(url))
+    setMriSlices(files)
+    setMriSliceUrls(files.map((file) => URL.createObjectURL(file)))
+    setActiveSliceIndex(0)
+    setIsSlicePlaying(files.length > 1)
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -157,6 +194,14 @@ function App() {
   }
 
   const availableNow = new Set(config?.available_now ?? [])
+  const activeMriSliceUrl = mriSliceUrls[activeSliceIndex] ?? null
+  const sliceProgressLabel = useMemo(() => {
+    if (!mriSlices.length) {
+      return 'No MRI stack loaded'
+    }
+
+    return `Slice ${activeSliceIndex + 1} of ${mriSlices.length}`
+  }, [activeSliceIndex, mriSlices.length])
 
   return (
     <main className="app-shell">
@@ -217,6 +262,20 @@ function App() {
               </span>
               <span className="upload-subtitle">
                 This file powers MRI-only mode and the MRI branch of fusion mode.
+              </span>
+            </label>
+          )}
+
+          {(modality === 'mri' || modality === 'fusion') && (
+            <label className="upload-zone sequence-zone">
+              <input type="file" accept="image/*" multiple onChange={onMriSequenceChange} />
+              <span className="upload-title">
+                {mriSlices.length
+                  ? `${mriSlices.length} MRI layers loaded for the cine viewer`
+                  : 'Load an MRI slice stack for the presentation viewer'}
+              </span>
+              <span className="upload-subtitle">
+                Select multiple ordered MRI images and the viewer will animate them with a slider.
               </span>
             </label>
           )}
@@ -283,6 +342,104 @@ function App() {
               )}
             </article>
           </div>
+
+          {(modality === 'mri' || modality === 'fusion') && (
+            <article className="cine-card">
+              <div className="cine-header">
+                <div>
+                  <span className="section-label">MRI Cine Viewer</span>
+                  <h3>Presentation mode for layered MRI slices</h3>
+                </div>
+                <div className="cine-chip-row">
+                  <span className="cine-chip">{sliceProgressLabel}</span>
+                  <span className="cine-chip">{playbackFps} fps</span>
+                </div>
+              </div>
+
+              <div className="cine-stage">
+                {activeMriSliceUrl ? (
+                  <>
+                    <img
+                      src={activeMriSliceUrl}
+                      alt={`MRI slice ${activeSliceIndex + 1}`}
+                      className="cine-image"
+                    />
+                    <div className="cine-overlay">
+                      <span>{sliceProgressLabel}</span>
+                      <span>{mriSlices[activeSliceIndex]?.name}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-state">
+                    Load multiple MRI layers and this viewer will animate them like a scan stack.
+                  </div>
+                )}
+              </div>
+
+              <div className="cine-controls">
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => setIsSlicePlaying((current) => !current)}
+                  disabled={mriSliceUrls.length <= 1}
+                >
+                  {isSlicePlaying ? 'Pause' : 'Play'}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() =>
+                    setActiveSliceIndex((current) => Math.max(current - 1, 0))
+                  }
+                  disabled={!mriSliceUrls.length}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() =>
+                    setActiveSliceIndex((current) => Math.min(current + 1, mriSliceUrls.length - 1))
+                  }
+                  disabled={!mriSliceUrls.length}
+                >
+                  Next
+                </button>
+                <div className="speed-group" role="group" aria-label="Playback speed">
+                  {[4, 8, 12].map((fps) => (
+                    <button
+                      key={fps}
+                      type="button"
+                      className={`speed-pill ${playbackFps === fps ? 'active' : ''}`}
+                      onClick={() => setPlaybackFps(fps)}
+                    >
+                      {fps} fps
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="slider-wrap">
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(mriSliceUrls.length - 1, 0)}
+                  value={Math.min(activeSliceIndex, Math.max(mriSliceUrls.length - 1, 0))}
+                  onChange={(event) => {
+                    setIsSlicePlaying(false)
+                    setActiveSliceIndex(Number(event.target.value))
+                  }}
+                  disabled={!mriSliceUrls.length}
+                  className="slice-slider"
+                />
+                <div className="slider-labels">
+                  <span>Base layer</span>
+                  <span>Focus layer</span>
+                  <span>Final layer</span>
+                </div>
+              </div>
+            </article>
+          )}
 
           <div className="insight-grid">
             <article className="insight-card diagnosis-card">
