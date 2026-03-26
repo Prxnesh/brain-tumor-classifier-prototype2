@@ -36,8 +36,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000
 function App() {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [modality, setModality] = useState<Modality>('mri')
-  const [file, setFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [mriFile, setMriFile] = useState<File | null>(null)
+  const [ctFile, setCtFile] = useState<File | null>(null)
+  const [mriPreviewUrl, setMriPreviewUrl] = useState<string | null>(null)
+  const [ctPreviewUrl, setCtPreviewUrl] = useState<string | null>(null)
   const [result, setResult] = useState<PredictionResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -65,23 +67,26 @@ function App() {
 
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl)
-      }
+      if (mriPreviewUrl) URL.revokeObjectURL(mriPreviewUrl)
+      if (ctPreviewUrl) URL.revokeObjectURL(ctPreviewUrl)
     }
-  }, [previewUrl])
+  }, [ctPreviewUrl, mriPreviewUrl])
 
-  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+  function onFileChange(event: ChangeEvent<HTMLInputElement>, kind: 'mri' | 'ct') {
     const nextFile = event.target.files?.[0] ?? null
-    setFile(nextFile)
     setResult(null)
     setError(null)
 
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl)
+    if (kind === 'mri') {
+      setMriFile(nextFile)
+      if (mriPreviewUrl) URL.revokeObjectURL(mriPreviewUrl)
+      setMriPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
+      return
     }
 
-    setPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
+    setCtFile(nextFile)
+    if (ctPreviewUrl) URL.revokeObjectURL(ctPreviewUrl)
+    setCtPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -89,26 +94,46 @@ function App() {
     setError(null)
     setResult(null)
 
-    if (!file) {
-      setError('Choose an image before running analysis.')
-      return
+    const formData = new FormData()
+    let endpoint = ''
+
+    if (modality === 'mri') {
+      if (!mriFile) {
+        setError('Choose an MRI image before running analysis.')
+        return
+      }
+      formData.append('file', mriFile)
+      endpoint = '/predict/mri'
+    } else if (modality === 'ct') {
+      if (!ctFile) {
+        setError('Choose a CT image before running analysis.')
+        return
+      }
+      formData.append('file', ctFile)
+      endpoint = '/predict/ct'
+    } else {
+      if (!mriFile || !ctFile) {
+        setError('Fusion mode needs both an MRI image and a CT image.')
+        return
+      }
+      formData.append('mri_file', mriFile)
+      formData.append('ct_file', ctFile)
+      endpoint = '/predict/fusion'
     }
 
-    if (modality !== 'mri') {
+    if (!availableNow.has(modality)) {
       setError(
         modality === 'ct'
-          ? 'CT analysis is wired in the app, but still needs a CT dataset and trained weights.'
-          : 'Fusion mode is wired in the app, but still needs paired CT and MRI data.'
+          ? 'CT dataset is present, but CT weights still need to be trained before this endpoint can run.'
+          : 'Fusion needs both trained MRI and CT models before it can run.'
       )
       return
     }
 
-    const formData = new FormData()
-    formData.append('file', file)
     setLoading(true)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/predict/mri`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         body: formData,
       })
@@ -184,15 +209,29 @@ function App() {
             })}
           </div>
 
-          <label className="upload-zone">
-            <input type="file" accept="image/*" onChange={onFileChange} />
-            <span className="upload-title">
-              {file ? file.name : 'Drop an MRI image here or click to browse'}
-            </span>
-            <span className="upload-subtitle">
-              JPG and PNG work well for the current pipeline.
-            </span>
-          </label>
+          {(modality === 'mri' || modality === 'fusion') && (
+            <label className="upload-zone">
+              <input type="file" accept="image/*" onChange={(event) => onFileChange(event, 'mri')} />
+              <span className="upload-title">
+                {mriFile ? mriFile.name : 'Drop an MRI image here or click to browse'}
+              </span>
+              <span className="upload-subtitle">
+                This file powers MRI-only mode and the MRI branch of fusion mode.
+              </span>
+            </label>
+          )}
+
+          {(modality === 'ct' || modality === 'fusion') && (
+            <label className="upload-zone ct-zone">
+              <input type="file" accept="image/*" onChange={(event) => onFileChange(event, 'ct')} />
+              <span className="upload-title">
+                {ctFile ? ctFile.name : 'Drop a CT image here or click to browse'}
+              </span>
+              <span className="upload-subtitle">
+                CT support is dataset-ready and will go live as soon as CT weights are trained.
+              </span>
+            </label>
+          )}
 
           <button className="primary-action" type="submit" disabled={loading}>
             {loading ? 'Analyzing scan...' : 'Run analysis'}
@@ -216,18 +255,26 @@ function App() {
           <div className="preview-grid">
             <article className="preview-card">
               <div className="preview-header">
-                <span>Uploaded scan</span>
+                <span>{modality === 'ct' ? 'Uploaded CT' : 'Uploaded MRI'}</span>
               </div>
-              {previewUrl ? (
-                <img src={previewUrl} alt="Uploaded scan preview" className="scan-image" />
+              {(modality === 'ct' ? ctPreviewUrl : mriPreviewUrl) ? (
+                <img
+                  src={modality === 'ct' ? (ctPreviewUrl as string) : (mriPreviewUrl as string)}
+                  alt="Uploaded scan preview"
+                  className="scan-image"
+                />
               ) : (
-                <div className="empty-state">Upload an MRI image to preview it here.</div>
+                <div className="empty-state">
+                  {modality === 'ct'
+                    ? 'Upload a CT image to preview it here.'
+                    : 'Upload an MRI image to preview it here.'}
+                </div>
               )}
             </article>
 
             <article className="preview-card">
               <div className="preview-header">
-                <span>Model attention</span>
+                <span>{modality === 'fusion' ? 'Fusion attention (MRI branch)' : 'Model attention'}</span>
               </div>
               {result ? (
                 <img src={result.gradcam_overlay} alt="Grad-CAM attention map" className="scan-image" />

@@ -1,0 +1,12 @@
+Using device: cuda
+Classes: ['glioma_tumor', 'meningioma_tumor', 'no_tumor', 'pituitary_tumor']
+Epoch 1: loss=192.6810 val_acc=0.4213
+Saved best model to brain_tumor_ct_resnet50.pth
+Epoch 2: loss=93.7470 val_acc=0.5635
+Saved best model to brain_tumor_ct_resnet50.pth
+Epoch 3: loss=52.8345 val_acc=0.6091
+Saved best model to brain_tumor_ct_resnet50.pth
+Epoch 4: loss=35.4442 val_acc=0.6041
+Epoch 5: loss=24.9722 val_acc=0.7056
+Saved best model to brain_tumor_ct_resnet50.pth
+Best validation accuracy: 0.7056

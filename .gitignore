@@ -10,6 +10,7 @@ __pycache__/
 # Dataset
 archive/
 archive MRI/
+archive ct/
 dataset/
 BraTS2024/
 
