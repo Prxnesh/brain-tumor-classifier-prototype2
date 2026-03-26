@@ -9,11 +9,19 @@ __pycache__/
 
 # Dataset
 archive/
+archive MRI/
 dataset/
 BraTS2024/
 
 # YOLO runs
 runs/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Backend
+backend/.venv/
 
 # Conda
 env/
