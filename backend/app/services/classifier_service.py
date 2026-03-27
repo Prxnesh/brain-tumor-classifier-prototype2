@@ -83,7 +83,7 @@ class ClassifierService:
             ],
             gradcam_overlay=self._to_data_url(Image.fromarray(overlay)),
             original_preview=self._to_data_url(Image.fromarray((rgb_img * 255).astype(np.uint8))),
-            report=self._build_report(predicted_label, confidence, probabilities),
+            report=self._build_report(predicted_label, confidence, probabilities, self.modality_label),
             notes=notes,
         )
 
@@ -127,8 +127,16 @@ class ClassifierService:
                     "body": "This result averages MRI and CT class probabilities as a first-pass multimodal baseline.",
                 },
                 {
+                    "title": "Why the model leaned this way",
+                    "body": self._build_reasoning_summary(predicted_label, confidence, fused_probabilities, "fusion"),
+                },
+                {
                     "title": "Primary finding",
                     "body": f"Combined MRI and CT evidence is most aligned with {predicted_label.replace('_', ' ')}.",
+                },
+                {
+                    "title": "Detailed clinical note",
+                    "body": self._build_clinical_note(predicted_label, confidence, fused_probabilities, "fusion"),
                 },
                 {
                     "title": "Clinical caution",
@@ -146,14 +154,14 @@ class ClassifierService:
             outputs = self.model(input_tensor)
             return torch.softmax(outputs, dim=1)[0].cpu().numpy()
 
-    @staticmethod
-    def _build_report(label: str, confidence: float, probabilities: np.ndarray) -> list[dict[str, str]]:
-        highest_other = sorted(
-            ((CLASS_NAMES[idx], float(value)) for idx, value in enumerate(probabilities) if CLASS_NAMES[idx] != label),
-            key=lambda item: item[1],
-            reverse=True,
-        )[0]
-
+    @classmethod
+    def _build_report(
+        cls,
+        label: str,
+        confidence: float,
+        probabilities: np.ndarray,
+        modality_label: str,
+    ) -> list[dict[str, str]]:
         findings = {
             "glioma_tumor": "Pattern is most consistent with a glioma-like presentation in the uploaded scan.",
             "meningioma_tumor": "Model attention favors meningioma-like morphology in the visible region.",
@@ -167,14 +175,93 @@ class ClassifierService:
                 "body": findings[label],
             },
             {
-                "title": "Confidence summary",
-                "body": f"Top-class confidence is {confidence:.1%}. The next strongest alternative is {highest_other[0]} at {highest_other[1]:.1%}.",
+                "title": "Why the model leaned this way",
+                "body": cls._build_reasoning_summary(label, confidence, probabilities, modality_label),
+            },
+            {
+                "title": "Detailed clinical note",
+                "body": cls._build_clinical_note(label, confidence, probabilities, modality_label),
             },
             {
                 "title": "Clinical caution",
                 "body": "This output is a decision-support prototype and should be reviewed by a qualified clinician before any diagnosis or treatment decision.",
             },
         ]
+
+    @staticmethod
+    def _build_reasoning_summary(
+        label: str,
+        confidence: float,
+        probabilities: np.ndarray,
+        modality_label: str,
+    ) -> str:
+        ranked = sorted(
+            ((CLASS_NAMES[idx], float(value)) for idx, value in enumerate(probabilities)),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        top_label, top_score = ranked[0]
+        runner_up_label, runner_up_score = ranked[1]
+        confidence_gap = top_score - runner_up_score
+
+        attention_text = {
+            "glioma_tumor": "the attention map tends to concentrate over an irregular focal region rather than diffuse normal parenchyma",
+            "meningioma_tumor": "the attention map favors a more circumscribed extra-axial looking region with comparatively cleaner boundaries",
+            "pituitary_tumor": "the attention map is drawn toward a central sellar or parasellar appearing focus",
+            "no_tumor": "the attention map is relatively less concentrated on a discrete mass-like region and the class balance stays closer to normal tissue patterns",
+        }
+
+        strength_text = (
+            "The decision is relatively strong"
+            if confidence_gap >= 0.25
+            else "The decision is moderate"
+            if confidence_gap >= 0.12
+            else "The decision is comparatively soft"
+        )
+
+        return (
+            f"For this {modality_label.upper()} study, the model ranked {top_label.replace('_', ' ')} highest at {confidence:.1%}. "
+            f"The nearest alternative was {runner_up_label.replace('_', ' ')} at {runner_up_score:.1%}, giving a margin of {confidence_gap:.1%}. "
+            f"{strength_text}, and {attention_text[label]}. This means the classifier is not only choosing the top class, "
+            f"but also separating it from the next-best explanation by a measurable probability gap."
+        )
+
+    @staticmethod
+    def _build_clinical_note(
+        label: str,
+        confidence: float,
+        probabilities: np.ndarray,
+        modality_label: str,
+    ) -> str:
+        ranked = sorted(
+            ((CLASS_NAMES[idx], float(value)) for idx, value in enumerate(probabilities)),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        differential = ", ".join(
+            f"{name.replace('_', ' ')} ({score:.1%})" for name, score in ranked[:3]
+        )
+
+        impression_map = {
+            "glioma_tumor": "Impression: focal appearance is most compatible with a glioma-pattern class prediction. In a real workflow this would justify correlation with lesion location, margins, edema, mass effect, and contrast behavior if available.",
+            "meningioma_tumor": "Impression: imaging pattern is most compatible with a meningioma-pattern class prediction. In practice this would merit review for extra-axial features, dural attachment, adjacent edema, and displacement of nearby structures.",
+            "pituitary_tumor": "Impression: imaging pattern is most compatible with a pituitary-pattern class prediction. In a real review this would prompt closer inspection of the sellar region, suprasellar extension, and relationship to surrounding anatomy.",
+            "no_tumor": "Impression: no-tumor class is favored on this image. That does not exclude subtle pathology, small lesions, motion-related obscuration, or findings that require multi-slice or multi-sequence review.",
+        }
+
+        certainty_note = (
+            "Confidence is high enough to support a focused review of the leading class first."
+            if confidence >= 0.75
+            else "Confidence is intermediate, so the leading class should be interpreted together with the secondary differential."
+            if confidence >= 0.5
+            else "Confidence is limited, so this output should be treated as a weak suggestion rather than a stable conclusion."
+        )
+
+        return (
+            f"{impression_map[label]} {certainty_note} "
+            f"Differential ranking from the current model is: {differential}. "
+            f"Recommended next step: correlate this {modality_label.upper()} output with the full study, clinical history, and expert radiology review before any diagnostic or treatment decision."
+        )
 
     @staticmethod
     def _to_data_url(image: Image.Image) -> str:
