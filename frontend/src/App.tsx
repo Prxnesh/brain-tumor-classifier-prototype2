@@ -10,6 +10,8 @@ type AppConfig = {
   supported_modalities: Modality[]
   available_now: Modality[]
   pending_datasets: Modality[]
+  ollama_available: boolean
+  ollama_model: string | null
 }
 
 type Probability = {
@@ -30,6 +32,7 @@ type PredictionResponse = {
   gradcam_overlay: string
   original_preview: string
   report: ReportSection[]
+  report_provider: 'template' | 'ollama'
   notes: string[]
 }
 
@@ -87,6 +90,7 @@ function App() {
   const [mriFile, setMriFile] = useState<File | null>(null)
   const [ctFile, setCtFile] = useState<File | null>(null)
   const [studyLabel, setStudyLabel] = useState('')
+  const [useOllamaReport, setUseOllamaReport] = useState(false)
   const [mriPreviewUrl, setMriPreviewUrl] = useState<string | null>(null)
   const [ctPreviewUrl, setCtPreviewUrl] = useState<string | null>(null)
   const [result, setResult] = useState<PredictionResponse | null>(null)
@@ -172,6 +176,7 @@ function App() {
         return
       }
       formData.append('file', mriFile)
+      formData.append('use_ollama', String(useOllamaReport))
       endpoint = '/predict/mri'
     } else if (modality === 'ct') {
       if (!ctFile) {
@@ -179,6 +184,7 @@ function App() {
         return
       }
       formData.append('file', ctFile)
+      formData.append('use_ollama', String(useOllamaReport))
       endpoint = '/predict/ct'
     } else {
       if (!mriFile || !ctFile) {
@@ -187,6 +193,7 @@ function App() {
       }
       formData.append('mri_file', mriFile)
       formData.append('ct_file', ctFile)
+      formData.append('use_ollama', String(useOllamaReport))
       endpoint = '/predict/fusion'
     }
 
@@ -294,6 +301,28 @@ function App() {
             </div>
           </div>
 
+          <label className={`toggle-field ${config?.ollama_available ? '' : 'disabled'}`}>
+            <div>
+              <span className="stat-label">Ollama report</span>
+              <strong>
+                {config?.ollama_available
+                  ? `Enabled with ${config.ollama_model ?? 'local model'}`
+                  : 'Unavailable'}
+              </strong>
+              <p className="toggle-copy">
+                {config?.ollama_available
+                  ? 'Use a local Ollama model to enhance the structured report after prediction.'
+                  : 'The app will fall back to the built-in template report until an Ollama server is available.'}
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={useOllamaReport}
+              onChange={(event) => setUseOllamaReport(event.target.checked)}
+              disabled={!config?.ollama_available}
+            />
+          </label>
+
           <label className="study-label-field">
             <span className="stat-label">Study label</span>
             <input
@@ -370,6 +399,17 @@ function App() {
               Download PDF report
             </button>
           </div>
+
+          {result ? (
+            <div className="report-provider-banner">
+              <span className="stat-label">Report engine</span>
+              <strong>
+                {result.report_provider === 'ollama'
+                  ? `Ollama${config?.ollama_model ? ` · ${config.ollama_model}` : ''}`
+                  : 'Built-in template'}
+              </strong>
+            </div>
+          ) : null}
 
           <div className="preview-grid">
             <article className="preview-card">

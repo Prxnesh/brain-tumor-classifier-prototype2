@@ -171,6 +171,41 @@
   margin-bottom: 16px;
 }
 
+.toggle-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: var(--tile);
+}
+
+.toggle-field.disabled {
+  opacity: 0.75;
+}
+
+.toggle-field strong,
+.report-provider-banner strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--heading-color);
+}
+
+.toggle-copy {
+  margin-top: 6px;
+  color: var(--muted-strong);
+}
+
+.toggle-field input {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-strong);
+}
+
 .study-label-field input {
   width: 100%;
   border: 1px solid var(--border-soft);
@@ -318,6 +353,14 @@
   display: flex;
   justify-content: flex-end;
   margin-bottom: 18px;
+}
+
+.report-provider-banner {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border-soft);
+  background: var(--tile);
 }
 
 .preview-card,

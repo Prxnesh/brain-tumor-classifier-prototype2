@@ -21,6 +21,7 @@ class PredictionResponse(BaseModel):
     gradcam_overlay: str
     original_preview: str
     report: list[ReportSection]
+    report_provider: Literal["template", "ollama"] = "template"
     model_ready: bool = True
     notes: list[str] = Field(default_factory=list)
 
@@ -29,3 +30,5 @@ class AppConfigResponse(BaseModel):
     supported_modalities: list[str]
     available_now: list[str]
     pending_datasets: list[str]
+    ollama_available: bool = False
+    ollama_model: str | None = None

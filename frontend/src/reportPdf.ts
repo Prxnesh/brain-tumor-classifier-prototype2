@@ -18,6 +18,7 @@ type PredictionResponse = {
   confidence: number
   probabilities: Probability[]
   report: ReportSection[]
+  report_provider: 'template' | 'ollama'
   notes: string[]
 }
 
@@ -114,6 +115,7 @@ export function exportReportPdf(result: PredictionResponse, options: ExportOptio
   writeWrapped(`Workflow: ${result.modality.toUpperCase()}`)
   writeWrapped(`Top classification: ${formatLabel(result.predicted_label)}`)
   writeWrapped(`Model confidence: ${(result.confidence * 100).toFixed(1)}%`)
+  writeWrapped(`Report engine: ${result.report_provider === 'ollama' ? 'Ollama-enhanced' : 'Built-in template'}`)
   cursorY += sectionGap
 
   writeSection(
