@@ -4,7 +4,13 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.schemas import AppConfigResponse, PredictionResponse
+from app.schemas import (
+    AppConfigResponse,
+    ChatRequest,
+    ChatResponse,
+    PredictionResponse,
+    TumorLocation,
+)
 from app.services.classifier_service import ClassifierService
 from app.services.ollama_service import OllamaService
 
@@ -126,6 +132,25 @@ async def predict_fusion(
     return _build_prediction_response("fusion", result, use_ollama)
 
 
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+    if ollama_service is None:
+        raise HTTPException(status_code=503, detail="Ollama integration is disabled in backend settings.")
+    if not ollama_service.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama server is not reachable at {settings.ollama_base_url}. Make sure Ollama is running.",
+        )
+
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+
+    try:
+        reply = ollama_service.chat(messages, context=request.context)
+        return ChatResponse(message=reply)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Chat generation failed: {exc}") from exc
+
+
 async def _read_upload(file: UploadFile) -> bytes:
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Please upload a valid image file.")
@@ -169,6 +194,10 @@ def _build_prediction_response(
             except Exception as exc:
                 notes.append(f"Ollama report enhancement failed, so the template report was used instead: {exc}")
 
+    tumor_location = None
+    if result.tumor_location:
+        tumor_location = TumorLocation(**result.tumor_location)
+
     return PredictionResponse(
         modality=modality,
         predicted_label=result.predicted_label,
@@ -179,4 +208,5 @@ def _build_prediction_response(
         report=report,
         report_provider=report_provider,
         notes=notes,
+        tumor_location=tumor_location,
     )

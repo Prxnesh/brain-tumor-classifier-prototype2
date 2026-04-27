@@ -93,6 +93,70 @@ class OllamaService:
 
         return normalized_sections
 
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        context: dict | None = None,
+    ) -> str:
+        """Multi-turn chat with optional scan context injected into system prompt."""
+        active_model = self.resolve_model()
+        if active_model is None:
+            raise ValueError("No installed Ollama model is currently available.")
+
+        system_content = (
+            "You are NeuroVision AI Assistant, a knowledgeable medical imaging assistant "
+            "specializing in brain tumor analysis. You help clinicians and researchers understand "
+            "AI-generated brain tumor predictions from MRI and CT scans. Always use cautious, "
+            "professional language. Never claim definitive diagnosis. Remind users that AI outputs "
+            "require clinical validation and expert review. Be helpful, informative, and empathetic "
+            "when discussing prognosis and treatment options. Keep responses concise and focused."
+        )
+
+        if context:
+            modality = str(context.get("modality", "unknown")).upper()
+            prediction = str(context.get("prediction", "unknown")).replace("_", " ")
+            confidence = float(context.get("confidence", 0))
+            location = context.get("tumor_location")
+            patient = context.get("patient", "")
+
+            context_lines = [
+                "\n\nCurrent scan context (use this to inform your responses):",
+                f"- Imaging modality: {modality}",
+                f"- AI predicted class: {prediction}",
+                f"- Model confidence: {confidence:.1%}",
+            ]
+            if patient:
+                context_lines.append(f"- Patient identifier: {patient}")
+            if location and isinstance(location, dict):
+                context_lines.append(f"- Predicted activation location: {location.get('description', 'unknown')}")
+                context_lines.append(f"- Quadrant: {location.get('quadrant', 'unknown')}")
+
+            system_content += "\n".join(context_lines)
+
+        ollama_messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_content},
+            *messages,
+        ]
+
+        response_payload = self._post_json(
+            "/api/chat",
+            {
+                "model": active_model,
+                "messages": ollama_messages,
+                "stream": False,
+            },
+        )
+
+        message = response_payload.get("message")
+        if not isinstance(message, dict):
+            raise ValueError("Ollama chat response missing message object.")
+
+        content = message.get("content")
+        if not isinstance(content, str):
+            raise ValueError("Ollama chat response missing content string.")
+
+        return content.strip()
+
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
         request = Request(

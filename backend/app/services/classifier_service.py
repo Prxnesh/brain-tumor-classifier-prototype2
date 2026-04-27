@@ -1,6 +1,6 @@
 import base64
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -26,6 +26,7 @@ class PredictionResult:
     original_preview: str
     report: list[dict[str, str]]
     notes: list[str]
+    tumor_location: dict | None = field(default=None)
 
 
 class ClassifierService:
@@ -64,6 +65,8 @@ class ClassifierService:
         )[0]
         grayscale_cam = cv2.GaussianBlur(grayscale_cam, (5, 5), 0)
 
+        tumor_location = self._extract_tumor_location(grayscale_cam)
+
         rgb_img = np.array(image.resize((224, 224)), dtype=np.float32) / 255.0
         overlay = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
@@ -86,6 +89,7 @@ class ClassifierService:
             original_preview=self._to_data_url(Image.fromarray((rgb_img * 255).astype(np.uint8))),
             report=self._build_report(predicted_label, confidence, probabilities, self.modality_label),
             notes=notes,
+            tumor_location=tumor_location,
         )
 
     def predict_probabilities_from_bytes(self, image_bytes: bytes) -> np.ndarray:
@@ -110,6 +114,8 @@ class ClassifierService:
         )[0]
         grayscale_cam = cv2.GaussianBlur(grayscale_cam, (5, 5), 0)
 
+        tumor_location = self._extract_tumor_location(grayscale_cam)
+
         rgb_img = np.array(mri_image.resize((224, 224)), dtype=np.float32) / 255.0
         overlay = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
@@ -128,12 +134,56 @@ class ClassifierService:
                 "The displayed saliency map in fusion mode is generated from the MRI branch only.",
                 "A dedicated paired-modality fusion model would be the appropriate next step for stronger clinical research performance.",
             ],
+            tumor_location=tumor_location,
         )
 
     def _predict_probabilities(self, input_tensor: torch.Tensor) -> np.ndarray:
         with torch.no_grad():
             outputs = self.model(input_tensor)
             return torch.softmax(outputs, dim=1)[0].cpu().numpy()
+
+    @staticmethod
+    def _extract_tumor_location(grayscale_cam: np.ndarray) -> dict:
+        """Extract tumor centroid from GradCAM heatmap using weighted centroid."""
+        h, w = grayscale_cam.shape
+        total_weight = float(np.sum(grayscale_cam))
+
+        if total_weight < 1e-6:
+            return {
+                "cx": 0.5,
+                "cy": 0.5,
+                "radius": 0.1,
+                "quadrant": "center",
+                "description": "Activation too diffuse to localize",
+            }
+
+        ys = np.arange(h).reshape(-1, 1).astype(np.float32)
+        xs = np.arange(w).reshape(1, -1).astype(np.float32)
+        cy = float(np.sum(ys * grayscale_cam)) / total_weight / h
+        cx = float(np.sum(xs * grayscale_cam)) / total_weight / w
+
+        # Estimate activation radius from area above 60th percentile
+        threshold = np.percentile(grayscale_cam, 60)
+        high_mask = (grayscale_cam >= threshold).astype(np.float32)
+        area_fraction = float(np.sum(high_mask)) / (h * w)
+        radius = float(np.sqrt(area_fraction / np.pi)) * 0.55
+        radius = max(0.05, min(0.35, radius))
+
+        quadrant_v = "upper" if cy < 0.5 else "lower"
+        quadrant_h = "left" if cx < 0.5 else "right"
+        quadrant = f"{quadrant_v}-{quadrant_h}"
+        description = (
+            f"Peak activation at {cx * 100:.0f}% from left, "
+            f"{cy * 100:.0f}% from top ({quadrant} quadrant)"
+        )
+
+        return {
+            "cx": round(cx, 4),
+            "cy": round(cy, 4),
+            "radius": round(radius, 4),
+            "quadrant": quadrant,
+            "description": description,
+        }
 
     @classmethod
     def _build_report(

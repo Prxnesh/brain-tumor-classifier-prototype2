@@ -1,111 +1,112 @@
+/* ── Material Design 3 Color Tokens — Light ────────────────────────────── */
 :root {
-  --bg: #eef3f8;
-  --bg-elevated: #f7fafc;
-  --panel: rgba(248, 251, 254, 0.88);
-  --tile: rgba(255, 255, 255, 0.8);
-  --tile-strong: rgba(246, 250, 253, 0.96);
-  --panel-border: rgba(104, 127, 152, 0.2);
-  --border-soft: rgba(104, 127, 152, 0.18);
-  --heading-color: #102331;
-  --text: #294150;
-  --muted: #607687;
-  --muted-strong: #466171;
-  --accent: #49b6d6;
-  --accent-strong: #0f6b91;
-  --success: #2f9c71;
-  --warning: #b17e2b;
-  --error: #c14f5e;
-  --button-surface: rgba(255, 255, 255, 0.74);
-  --panel-shadow: 0 24px 50px rgba(18, 43, 62, 0.1);
-  --font-sans: 'Avenir Next', 'Segoe UI', 'Trebuchet MS', sans-serif;
+  --primary: #1A73E8;
+  --on-primary: #FFFFFF;
+  --primary-container: #D3E3FD;
+  --on-primary-container: #041E49;
+  --primary-focus: rgba(26, 115, 232, 0.12);
 
-  font-family: var(--font-sans);
+  --surface: #FFFFFF;
+  --surface-variant: #F1F3F4;
+  --on-surface: #202124;
+  --on-surface-variant: #5F6368;
+
+  --bg: #F8F9FA;
+  --outline: #DADCE0;
+
+  --success: #137333;
+  --success-container: #E6F4EA;
+  --warning: #B06000;
+  --warning-container: #FEF7E0;
+  --error: #C5221F;
+  --error-container: #FDECEA;
+
+  --shadow-1: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-2: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  --shadow-3: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+
+  font-family: 'Google Sans', 'Roboto', 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
   line-height: 1.5;
   font-weight: 400;
-  color: var(--text);
-  background:
-    radial-gradient(circle at top, rgba(87, 179, 204, 0.15), transparent 26%),
-    linear-gradient(180deg, #edf3f8 0%, #dce7ef 100%);
+  color: var(--on-surface);
+  background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Material Design 3 Color Tokens — Dark ─────────────────────────────── */
 :root[data-theme='dark'] {
-  --bg: #07131b;
-  --bg-elevated: #0a1a22;
-  --panel: rgba(8, 18, 25, 0.88);
-  --tile: rgba(12, 27, 36, 0.82);
-  --tile-strong: rgba(15, 31, 41, 0.95);
-  --panel-border: rgba(73, 182, 214, 0.18);
-  --border-soft: rgba(111, 166, 184, 0.18);
-  --heading-color: #ecf7ff;
-  --text: #bdd4df;
-  --muted: #7e99a8;
-  --muted-strong: #a7c0cb;
-  --accent: #4fd8ff;
-  --accent-strong: #0f86ab;
-  --success: #49d7a2;
-  --warning: #ffc15a;
-  --error: #ff8a97;
-  --button-surface: rgba(16, 35, 47, 0.9);
-  --panel-shadow: 0 28px 64px rgba(0, 0, 0, 0.36);
+  --primary: #8AB4F8;
+  --on-primary: #0A2D6E;
+  --primary-container: #0F3B8F;
+  --on-primary-container: #D3E3FD;
+  --primary-focus: rgba(138, 180, 248, 0.12);
 
-  background:
-    radial-gradient(circle at top, rgba(79, 216, 255, 0.09), transparent 22%),
-    linear-gradient(180deg, #061118 0%, #0d1d27 100%);
+  --surface: #202124;
+  --surface-variant: #2D2F31;
+  --on-surface: #E8EAED;
+  --on-surface-variant: #9AA0A6;
+
+  --bg: #131516;
+  --outline: #3C4043;
+
+  --success: #57BB8A;
+  --success-container: #0D3321;
+  --warning: #F9C96B;
+  --warning-container: #3A2900;
+  --error: #F28B82;
+  --error-container: #601410;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 4px 8px 3px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-* {
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
-  background:
-    linear-gradient(90deg, transparent 0, transparent 47px, rgba(255, 255, 255, 0.02) 48px),
-    var(--bg);
-  color: var(--text);
+  background: var(--bg);
+  color: var(--on-surface);
 }
 
-#root {
-  min-height: 100vh;
-}
-
-h1,
-h2,
-h3,
-h4,
-p {
+h1, h2, h3, h4, h5, h6, p {
   margin: 0;
 }
 
-h1,
-h2,
-h3,
-h4 {
-  color: var(--heading-color);
-  line-height: 1.05;
-}
-
-h1 {
-  font-size: clamp(2.5rem, 6vw, 4.6rem);
-  letter-spacing: -0.05em;
-}
-
-h2 {
-  font-size: clamp(1.35rem, 3vw, 2rem);
-}
-
-button,
-input {
+button, input, textarea, select {
   font: inherit;
+}
+
+img {
+  max-width: 100%;
+}
+
+summary {
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
 }
