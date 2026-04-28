@@ -1,7 +1,10 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import './App.css'
+import BoundingBoxOverlay from './BoundingBoxOverlay'
 import ChatPanel from './ChatPanel'
+import NerdStatsTab from './NerdStatsTab'
+import ProcessingOverlay from './ProcessingOverlay'
 import { exportReportPdf } from './reportPdf'
 import type {
   AppConfig,
@@ -155,60 +158,21 @@ function ImageWithOverlay({
   alt,
   location,
   isPredictionTumor,
+  label,
+  confidence,
 }: {
   src: string
   alt: string
   location?: TumorLocation
   isPredictionTumor: boolean
+  label?: string
+  confidence?: number
 }) {
   return (
     <div className="image-overlay-wrapper">
       <img src={src} alt={alt} className="scan-img" />
-      {location && isPredictionTumor && (
-        <svg
-          className="tumor-overlay"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          aria-label={`Predicted activation: ${location.description}`}
-        >
-          {/* Outer dashed circle */}
-          <circle
-            cx={location.cx * 100}
-            cy={location.cy * 100}
-            r={location.radius * 100}
-            fill="rgba(234, 67, 53, 0.08)"
-            stroke="#EA4335"
-            strokeWidth="0.6"
-            strokeDasharray="2.5 1.5"
-          />
-          {/* Crosshair horizontal */}
-          <line
-            x1={Math.max(0, (location.cx - location.radius * 1.8) * 100)}
-            y1={location.cy * 100}
-            x2={Math.min(100, (location.cx + location.radius * 1.8) * 100)}
-            y2={location.cy * 100}
-            stroke="#EA4335"
-            strokeWidth="0.35"
-            opacity="0.8"
-          />
-          {/* Crosshair vertical */}
-          <line
-            x1={location.cx * 100}
-            y1={Math.max(0, (location.cy - location.radius * 1.8) * 100)}
-            x2={location.cx * 100}
-            y2={Math.min(100, (location.cy + location.radius * 1.8) * 100)}
-            stroke="#EA4335"
-            strokeWidth="0.35"
-            opacity="0.8"
-          />
-          {/* Center dot */}
-          <circle
-            cx={location.cx * 100}
-            cy={location.cy * 100}
-            r="1.2"
-            fill="#EA4335"
-          />
-        </svg>
+      {location && isPredictionTumor && label && confidence !== undefined && (
+        <BoundingBoxOverlay location={location} label={label} confidence={confidence} />
       )}
     </div>
   )
@@ -305,6 +269,7 @@ export default function App() {
   const [result, setResult] = useState<PredictionResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resultsTab, setResultsTab] = useState<'results' | 'stats'>('results')
 
   // History
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory)
@@ -410,6 +375,7 @@ export default function App() {
       startTransition(() => {
         setResult(pred)
         setImageTab('gradcam')
+        setResultsTab('results')
       })
 
       // Save to history (no base64 images to stay within localStorage limits)
@@ -724,15 +690,36 @@ export default function App() {
                   </div>
                 )}
 
-                {loading && (
-                  <div className="results-empty">
-                    <div className="spinner spinner--large" />
-                    <p style={{ marginTop: 16 }}>Processing scan…</p>
-                  </div>
-                )}
+                <ProcessingOverlay visible={loading} />
 
                 {result && (
                   <>
+                    {/* Results / Stats for Nerds toggle */}
+                    <div className="results-view-toggle">
+                      <button
+                        className={`tab-btn ${resultsTab === 'results' ? 'tab-btn--active' : ''}`}
+                        type="button"
+                        onClick={() => setResultsTab('results')}
+                      >
+                        Analysis
+                      </button>
+                      <button
+                        className={`tab-btn ${resultsTab === 'stats' ? 'tab-btn--active' : ''}`}
+                        type="button"
+                        onClick={() => setResultsTab('stats')}
+                      >
+                        Stats for Nerds
+                      </button>
+                    </div>
+
+                    {/* Stats for Nerds view */}
+                    {resultsTab === 'stats' && (
+                      <NerdStatsTab result={result} config={config} />
+                    )}
+
+                    {/* Analysis results */}
+                    {resultsTab === 'results' && <>
+
                     {/* Image viewer */}
                     <div className="result-card">
                       <div className="card-header card-header--with-tabs">
@@ -767,6 +754,8 @@ export default function App() {
                           alt="Grad-CAM attention map"
                           location={result.tumor_location}
                           isPredictionTumor={isTumorPrediction}
+                          label={result.predicted_label}
+                          confidence={result.confidence}
                         />
                       )}
 
@@ -886,6 +875,7 @@ export default function App() {
                         </ul>
                       </div>
                     )}
+                    </>}
                   </>
                 )}
               </div>
