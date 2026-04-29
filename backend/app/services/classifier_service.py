@@ -1,6 +1,6 @@
 import base64
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -26,6 +26,7 @@ class PredictionResult:
     original_preview: str
     report: list[dict[str, str]]
     notes: list[str]
+    tumor_location: dict | None = field(default=None)
 
 
 class ClassifierService:
@@ -64,12 +65,15 @@ class ClassifierService:
         )[0]
         grayscale_cam = cv2.GaussianBlur(grayscale_cam, (5, 5), 0)
 
+        tumor_location = self._extract_tumor_location(grayscale_cam)
+
         rgb_img = np.array(image.resize((224, 224)), dtype=np.float32) / 255.0
         overlay = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
         notes = [
-            f"{self.modality_label.upper()} inference is active in this build.",
-            "This is a decision-support prototype and requires clinician review.",
+            f"{self.modality_label.upper()} inference pipeline loaded successfully.",
+            "Structured report is AI-generated and formatted in a radiology-style summary for decision support.",
+            "Formal diagnosis still requires full-study review, clinical correlation, and clinician oversight.",
         ]
         if extra_notes:
             notes.extend(extra_notes)
@@ -85,6 +89,7 @@ class ClassifierService:
             original_preview=self._to_data_url(Image.fromarray((rgb_img * 255).astype(np.uint8))),
             report=self._build_report(predicted_label, confidence, probabilities, self.modality_label),
             notes=notes,
+            tumor_location=tumor_location,
         )
 
     def predict_probabilities_from_bytes(self, image_bytes: bytes) -> np.ndarray:
@@ -109,6 +114,8 @@ class ClassifierService:
         )[0]
         grayscale_cam = cv2.GaussianBlur(grayscale_cam, (5, 5), 0)
 
+        tumor_location = self._extract_tumor_location(grayscale_cam)
+
         rgb_img = np.array(mri_image.resize((224, 224)), dtype=np.float32) / 255.0
         overlay = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
@@ -121,38 +128,62 @@ class ClassifierService:
             ],
             gradcam_overlay=self._to_data_url(Image.fromarray(overlay)),
             original_preview=self._to_data_url(Image.fromarray((rgb_img * 255).astype(np.uint8))),
-            report=[
-                {
-                    "title": "Fusion summary",
-                    "body": "This result averages MRI and CT class probabilities as a first-pass multimodal baseline.",
-                },
-                {
-                    "title": "Why the model leaned this way",
-                    "body": self._build_reasoning_summary(predicted_label, confidence, fused_probabilities, "fusion"),
-                },
-                {
-                    "title": "Primary finding",
-                    "body": f"Combined MRI and CT evidence is most aligned with {predicted_label.replace('_', ' ')}.",
-                },
-                {
-                    "title": "Detailed clinical note",
-                    "body": self._build_clinical_note(predicted_label, confidence, fused_probabilities, "fusion"),
-                },
-                {
-                    "title": "Clinical caution",
-                    "body": "This fusion flow is a heuristic baseline. A dedicated paired-modality fusion model would be stronger once paired studies are available.",
-                },
-            ],
+            report=self._build_report(predicted_label, confidence, fused_probabilities, "fusion"),
             notes=[
-                "Fusion currently uses late-probability averaging across MRI and CT models.",
-                "Grad-CAM is generated from the MRI branch in the current prototype.",
+                "Fusion currently uses late-probability averaging across independently trained MRI and CT classifiers.",
+                "The displayed saliency map in fusion mode is generated from the MRI branch only.",
+                "A dedicated paired-modality fusion model would be the appropriate next step for stronger clinical research performance.",
             ],
+            tumor_location=tumor_location,
         )
 
     def _predict_probabilities(self, input_tensor: torch.Tensor) -> np.ndarray:
         with torch.no_grad():
             outputs = self.model(input_tensor)
             return torch.softmax(outputs, dim=1)[0].cpu().numpy()
+
+    @staticmethod
+    def _extract_tumor_location(grayscale_cam: np.ndarray) -> dict:
+        """Extract tumor centroid from GradCAM heatmap using weighted centroid."""
+        h, w = grayscale_cam.shape
+        total_weight = float(np.sum(grayscale_cam))
+
+        if total_weight < 1e-6:
+            return {
+                "cx": 0.5,
+                "cy": 0.5,
+                "radius": 0.1,
+                "quadrant": "center",
+                "description": "Activation too diffuse to localize",
+            }
+
+        ys = np.arange(h).reshape(-1, 1).astype(np.float32)
+        xs = np.arange(w).reshape(1, -1).astype(np.float32)
+        cy = float(np.sum(ys * grayscale_cam)) / total_weight / h
+        cx = float(np.sum(xs * grayscale_cam)) / total_weight / w
+
+        # Estimate activation radius from area above 60th percentile
+        threshold = np.percentile(grayscale_cam, 60)
+        high_mask = (grayscale_cam >= threshold).astype(np.float32)
+        area_fraction = float(np.sum(high_mask)) / (h * w)
+        radius = float(np.sqrt(area_fraction / np.pi)) * 0.55
+        radius = max(0.05, min(0.35, radius))
+
+        quadrant_v = "upper" if cy < 0.5 else "lower"
+        quadrant_h = "left" if cx < 0.5 else "right"
+        quadrant = f"{quadrant_v}-{quadrant_h}"
+        description = (
+            f"Peak activation at {cx * 100:.0f}% from left, "
+            f"{cy * 100:.0f}% from top ({quadrant} quadrant)"
+        )
+
+        return {
+            "cx": round(cx, 4),
+            "cy": round(cy, 4),
+            "radius": round(radius, 4),
+            "quadrant": quadrant,
+            "description": description,
+        }
 
     @classmethod
     def _build_report(
@@ -162,29 +193,65 @@ class ClassifierService:
         probabilities: np.ndarray,
         modality_label: str,
     ) -> list[dict[str, str]]:
-        findings = {
-            "glioma_tumor": "Pattern is most consistent with a glioma-like presentation in the uploaded scan.",
-            "meningioma_tumor": "Model attention favors meningioma-like morphology in the visible region.",
-            "pituitary_tumor": "Prediction suggests a pituitary-region abnormality in the provided image.",
-            "no_tumor": "The uploaded scan appears more consistent with the no-tumor class.",
+        ranked = sorted(
+            ((CLASS_NAMES[idx], float(value)) for idx, value in enumerate(probabilities)),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        differential = ", ".join(
+            f"{name.replace('_', ' ')} ({score:.1%})" for name, score in ranked[:3]
+        )
+        technique_line = (
+            "Multimodal fusion generated by averaging MRI and CT class probabilities, with Grad-CAM visual explanation displayed from the MRI branch."
+            if modality_label == "fusion"
+            else f"Single uploaded {modality_label.upper()} image processed through a ResNet50 classifier with Grad-CAM saliency review."
+        )
+        findings_map = {
+            "glioma_tumor": "AI pattern analysis favors an intra-axial glioma-spectrum presentation, with saliency concentrated over a comparatively irregular focal abnormality.",
+            "meningioma_tumor": "AI pattern analysis favors a meningioma-pattern presentation, with attention drawn toward a more circumscribed lesion morphology within the learned label space.",
+            "pituitary_tumor": "AI pattern analysis favors a pituitary-pattern presentation, with highest saliency near a central sellar or parasellar appearing focus.",
+            "no_tumor": "No dominant tumor-pattern class is favored by the model on the submitted image, and the overall appearance is most aligned with the no-tumor class in the current label space.",
         }
+        recommendation_line = (
+            "Correlate with the complete imaging examination, lesion distribution, mass effect, edema pattern, contrast behavior when available, prior studies, and formal neuroradiology review."
+            if label != "no_tumor"
+            else "Absence of a dominant tumor-pattern prediction does not exclude subtle, early, or non-mass pathology; correlate with the complete study and clinical context."
+        )
 
         return [
             {
-                "title": "Primary finding",
-                "body": findings[label],
+                "title": "Study summary",
+                "body": (
+                    f"AI-assisted review of the submitted {modality_label.upper()} input identifies "
+                    f"{label.replace('_', ' ')} as the leading class prediction at {confidence:.1%} confidence."
+                ),
             },
             {
-                "title": "Why the model leaned this way",
+                "title": "Technique",
+                "body": technique_line,
+            },
+            {
+                "title": "Findings",
+                "body": findings_map[label],
+            },
+            {
+                "title": "Saliency interpretation",
                 "body": cls._build_reasoning_summary(label, confidence, probabilities, modality_label),
             },
             {
-                "title": "Detailed clinical note",
+                "title": "Differential consideration",
+                "body": f"Top ranked differential classes from the current model are {differential}. These probabilities reflect model preference within the trained label space and should not be interpreted as a complete clinical differential diagnosis.",
+            },
+            {
+                "title": "Impression",
                 "body": cls._build_clinical_note(label, confidence, probabilities, modality_label),
             },
             {
-                "title": "Clinical caution",
-                "body": "This output is a decision-support prototype and should be reviewed by a qualified clinician before any diagnosis or treatment decision.",
+                "title": "Recommendations and limitations",
+                "body": (
+                    f"{recommendation_line} This report is AI-generated, clinically styled, and intended for decision support only; "
+                    "it is not a validated standalone medical report."
+                ),
             },
         ]
 

@@ -1,91 +1,112 @@
+/* ── Material Design 3 Color Tokens — Light ────────────────────────────── */
 :root {
-  --bg: #07111a;
-  --bg-deep: #030912;
-  --panel: rgba(10, 19, 30, 0.82);
-  --panel-strong: rgba(14, 24, 36, 0.94);
-  --tile: rgba(18, 31, 46, 0.82);
-  --tile-soft: rgba(16, 27, 41, 0.74);
-  --border: rgba(125, 177, 214, 0.18);
-  --border-soft: rgba(125, 177, 214, 0.1);
-  --heading-color: #f4f8fc;
-  --text: #cad5e2;
-  --muted: #8ea4bb;
-  --muted-strong: #aab9ca;
-  --success: #67d8a1;
-  --warning: #f4b46a;
-  --danger: #ff7f8c;
-  --glow: rgba(52, 134, 199, 0.22);
-  --shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
-  --font-sans: 'Trebuchet MS', 'Segoe UI', 'Gill Sans', sans-serif;
+  --primary: #1A73E8;
+  --on-primary: #FFFFFF;
+  --primary-container: #D3E3FD;
+  --on-primary-container: #041E49;
+  --primary-focus: rgba(26, 115, 232, 0.12);
 
-  font-family: var(--font-sans);
+  --surface: #FFFFFF;
+  --surface-variant: #F1F3F4;
+  --on-surface: #202124;
+  --on-surface-variant: #5F6368;
+
+  --bg: #F8F9FA;
+  --outline: #DADCE0;
+
+  --success: #137333;
+  --success-container: #E6F4EA;
+  --warning: #B06000;
+  --warning-container: #FEF7E0;
+  --error: #C5221F;
+  --error-container: #FDECEA;
+
+  --shadow-1: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-2: 0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  --shadow-3: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+
+  font-family: 'Google Sans', 'Roboto', 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
   line-height: 1.5;
   font-weight: 400;
-  color: var(--text);
-  background:
-    radial-gradient(circle at top, rgba(47, 122, 194, 0.28), transparent 24%),
-    radial-gradient(circle at 80% 20%, rgba(22, 191, 156, 0.16), transparent 18%),
-    linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+  color: var(--on-surface);
+  background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
+/* ── Material Design 3 Color Tokens — Dark ─────────────────────────────── */
+:root[data-theme='dark'] {
+  --primary: #8AB4F8;
+  --on-primary: #0A2D6E;
+  --primary-container: #0F3B8F;
+  --on-primary-container: #D3E3FD;
+  --primary-focus: rgba(138, 180, 248, 0.12);
+
+  --surface: #202124;
+  --surface-variant: #2D2F31;
+  --on-surface: #E8EAED;
+  --on-surface-variant: #9AA0A6;
+
+  --bg: #131516;
+  --outline: #3C4043;
+
+  --success: #57BB8A;
+  --success-container: #0D3321;
+  --warning: #F9C96B;
+  --warning-container: #3A2900;
+  --error: #F28B82;
+  --error-container: #601410;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 4px 8px 3px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html,
 body,
 #root {
-  min-height: 100%;
-}
-
-html {
-  color-scheme: dark;
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
+  background: var(--bg);
+  color: var(--on-surface);
 }
 
-#root {
-  min-height: 100vh;
-}
-
-h1,
-h2,
-h3,
-h4,
-p {
+h1, h2, h3, h4, h5, h6, p {
   margin: 0;
 }
 
-h1,
-h2,
-h3,
-h4 {
-  color: var(--heading-color);
-  line-height: 1.05;
-}
-
-h1 {
-  font-size: clamp(2.8rem, 6vw, 5rem);
-  letter-spacing: -0.06em;
-}
-
-h2 {
-  font-size: clamp(1.4rem, 3vw, 2rem);
-}
-
-button,
-input {
+button, input, textarea, select {
   font: inherit;
 }
 
-::selection {
-  background: rgba(79, 158, 222, 0.3);
-  color: #fff;
+img {
+  max-width: 100%;
+}
+
+summary {
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
 }
